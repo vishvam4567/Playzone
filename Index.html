@@ -1,0 +1,177 @@
+`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Play Zone</title>
+<style>
+:root{--bg:#f4f2ff;--fg:#1a1740;--card:#fff;--line:#d9d4f5;--a:#ff3d7f;--b:#12b5a6;--cell:#e9e5ff;color-scheme:light}
+@media(prefers-color-scheme:dark){:root{--bg:#14122b;--fg:#f1efff;--card:#1f1c40;--line:#38336b;--cell:#2c2859;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 "Trebuchet MS","Segoe UI",system-ui,sans-serif}
+header{padding:48px 20px 24px;max-width:1000px;margin:auto}
+h1{font-size:clamp(2.6rem,10vw,5rem);line-height:1;margin:0;font-weight:900;letter-spacing:-2px;text-shadow:4px 4px 0 var(--a)}
+header p{margin:14px 0 20px;max-width:46ch}
+#q{width:100%;max-width:360px;padding:12px 16px;border:2px solid var(--line);border-radius:999px;background:var(--card);color:var(--fg);font:inherit}
+main{max-width:1000px;margin:auto;padding:0 20px 60px;display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px}
+.card{background:var(--card);border:2px solid var(--line);border-bottom:6px solid hsl(var(--h) 80% 55%);border-radius:14px;padding:18px 14px;text-align:left;color:var(--fg);font:inherit;cursor:pointer}
+.card:hover,.card:focus-visible{transform:translateY(-3px);outline:3px solid hsl(var(--h) 80% 55%)}
+.card i{font-size:2.2rem;font-style:normal;display:block}
+.card b{display:block;margin-top:6px}
+.card span{font-size:.85rem;opacity:.7}
+#m{position:fixed;inset:0;background:rgba(10,8,30,.75);display:none;align-items:center;justify-content:center;padding:12px;z-index:9}
+#m.on{display:flex}
+#w{background:var(--card);border-radius:18px;width:100%;max-width:440px;max-height:96vh;overflow:auto;padding:18px;border:2px solid var(--line)}
+#bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+#bar h2{flex:1;margin:0;font-size:1.3rem}
+#box{text-align:center;min-height:200px}
+button{font:inherit;color:var(--fg);background:var(--cell);border:2px solid var(--line);border-radius:10px;padding:8px 14px;cursor:pointer}
+button:hover:not(:disabled){border-color:var(--a)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--b)}
+.g{display:grid;grid-template-columns:repeat(var(--c),1fr);gap:6px;margin:10px 0}
+.g button{aspect-ratio:1;font-size:1.5rem;padding:0}
+.row{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+.big{font-size:1.5rem;padding:16px 24px;background:var(--a);color:#fff;border-color:transparent}
+.sm{padding:6px 10px;min-width:36px}
+.g .sm{font-size:1rem}
+input{padding:10px;border:2px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg);font:inherit;width:140px;margin-right:6px}
+canvas{max-width:100%;border-radius:10px;touch-action:none;background:#123}
+h2#w2{margin:8px}
+</style>
+</head>
+<body>
+<header>
+<h1>Play Zone</h1>
+<p>20 quick games that run right in your browser. Pick one and start playing.</p>
+<input id="q" type="search" placeholder="Search games" aria-label="Search games">
+</header>
+<main id="list"></main>
+<div id="m" role="dialog" aria-modal="true"><div id="w"><div id="bar"><h2 id="t"></h2><button id="re">Restart</button><button id="x" aria-label="Close">✕</button></div><div id="box"></div></div></div>
+
+<script>
+const $=s=>document.querySelector(s),rnd=n=>Math.floor(Math.random()*n);
+let cl=[],cur=-1;const box=$('#box');
+const iv=(f,m)=>{const i=setInterval(f,m);cl.push(()=>clearInterval(i))};
+const to=(f,m)=>{const i=setTimeout(f,m);cl.push(()=>clearTimeout(i));return i};
+const on=(t,e,f)=>{t.addEventListener(e,f);cl.push(()=>t.removeEventListener(e,f))};
+const ui=h=>box.innerHTML=h, say=t=>$('#s').textContent=t;
+const cv=(w,h)=>{box.innerHTML='<p id=s></p><canvas></canvas>';const c=box.lastChild;c.width=w;c.height=h;return c.getContext('2d')};
+const keys=f=>{on(document,'keydown',e=>{if(e.key.startsWith('Arrow'))e.preventDefault();f(e.key)});const p=document.createElement('div');p.className='row';p.innerHTML=[['ArrowLeft','←'],['ArrowUp','↑'],['ArrowDown','↓'],['ArrowRight','→']].map(k=>`<button class=sm data-k=${k[0]}>${k[1]}</button>`).join('');box.append(p);p.onclick=e=>e.target.dataset.k&&f(e.target.dataset.k)};
+const pos=(e,c)=>{const r=c.getBoundingClientRect();return[(e.clientX-r.left)*c.width/r.width,(e.clientY-r.top)*c.height/r.height]};
+const grid=(n,c,cls='')=>`<div class=g style=--c:${c}>`+`<button class="${cls}"></button>`.repeat(n)+'</div>';
+
+function ttt(){let b=Array(9).fill(''),over=0;ui('<p id=s>Your turn (X)</p>'+grid(9,3));const bs=[...box.querySelectorAll('.g button')];
+const W=[[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]],win=p=>W.some(l=>l.every(i=>b[i]==p));
+const chk=()=>{if(win('X')){say('You win! 🎉');return over=1}if(win('O')){say('Computer wins');return over=1}if(!b.includes('')){say('Draw');return over=1}say('Your turn (X)')};
+const ai=()=>{const f=p=>{for(const l of W){const v=l.map(i=>b[i]);if(v.filter(x=>x==p).length==2&&v.includes(''))return l[v.indexOf('')]}};let m=f('O');if(m==null)m=f('X');if(m==null&&b[4]=='')m=4;if(m==null){const e=b.map((x,i)=>x==''?i:-1).filter(i=>i>=0);m=e[rnd(e.length)]}return m};
+bs.forEach((x,i)=>x.onclick=()=>{if(over||b[i])return;b[i]='X';if(!chk()){b[ai()]='O';chk()}bs.forEach((y,j)=>y.textContent=b[j])})}
+
+function mem(){const e=['🍎','🚀','🐱','⚽','🎸','🌈','🍕','👾'],d=[...e,...e].sort(()=>Math.random()-.5);let o=[],m=0,mv=0,lock=0;ui('<p id=s>Moves: 0</p>'+grid(16,4));const bs=[...box.querySelectorAll('.g button')];
+bs.forEach((x,i)=>x.onclick=()=>{if(lock||x.textContent||o.includes(i))return;x.textContent=d[i];o.push(i);if(o.length==2){mv++;say('Moves: '+mv);const[a,c]=o;if(d[a]==d[c]){o=[];if(++m==8)say('You won in '+mv+' moves! 🎉')}else{lock=1;to(()=>{bs[a].textContent=bs[c].textContent='';o=[];lock=0},700)}}})}
+
+function snake(){const x=cv(300,300);let s=[[7,7]],d=[1,0],f=[10,7],sc=0,dead=0;say('Score 0');
+keys(k=>{const v={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[k];if(v&&(v[0]+d[0]||v[1]+d[1]))d=v});
+iv(()=>{if(dead)return;const h=[s[0][0]+d[0],s[0][1]+d[1]];if(h[0]<0||h[1]<0||h[0]>14||h[1]>14||s.some(p=>p[0]==h[0]&&p[1]==h[1])){dead=1;say('Game over! Score '+sc);return}
+s.unshift(h);if(h[0]==f[0]&&h[1]==f[1]){sc++;say('Score '+sc);f=[rnd(15),rnd(15)]}else s.pop();
+x.fillStyle='#123';x.fillRect(0,0,300,300);x.fillStyle='#f45';x.fillRect(f[0]*20,f[1]*20,18,18);x.fillStyle='#3d9';s.forEach(p=>x.fillRect(p[0]*20,p[1]*20,18,18))},130)}
+
+function whack(){let sc=0,t=30,m=-1;ui('<p id=s></p>'+grid(9,3));const bs=[...box.querySelectorAll('.g button')],up=()=>say(`Score ${sc} · ${t}s left`);up();
+bs.forEach((b,i)=>b.onclick=()=>{if(i==m){sc++;b.textContent='';m=-1;up()}});
+iv(()=>{if(t<=0)return;bs.forEach(b=>b.textContent='');m=rnd(9);bs[m].textContent='🐹'},800);
+iv(()=>{if(t>0){t--;up();if(!t){bs.forEach(b=>b.textContent='');m=-1;say('Time’s up! Score '+sc)}}},1000)}
+
+function rps(){const o=['🪨','📄','✂️'];let w=0,l=0;ui('<p id=s>Pick one</p><div class=row>'+o.map((x,i)=>`<button class=big data-i=${i}>${x}</button>`).join('')+'</div><p id=sc>Wins 0 · Losses 0</p>');
+box.querySelectorAll('.big').forEach(b=>b.onclick=()=>{const p=+b.dataset.i,c=rnd(3),r=(p-c+3)%3;if(r==1)w++;else if(r==2)l++;say(`${o[p]} vs ${o[c]}: ${['Draw','You win!','You lose'][r]}`);$('#sc').textContent=`Wins ${w} · Losses ${l}`})}
+
+function guess(){const n=1+rnd(100);let g=0;ui('<p id=s>Guess a number from 1 to 100</p><input id=i type=number><button id=b>Guess</button>');
+$('#b').onclick=()=>{const v=+$('#i').value;if(!v)return;g++;say(v==n?`Correct! It took ${g} tries 🎉`:v<n?'Too low, go higher':'Too high, go lower')}}
+
+function clk(){let c=0,run=0,done=0;ui('<p id=s>Click as fast as you can for 10 seconds</p><button class=big id=b>Click!</button>');
+$('#b').onclick=()=>{if(done)return;if(!run){run=1;let l=10;iv(()=>{l--;if(!l){done=1;say(`Done! ${c} clicks (${c/10} per second)`)}else say(l+'s left · '+c)},1000)}c++;if(!done)say('Clicks: '+c)}}
+
+function react(){let st=0,t0,T;ui('<button id=b class=big style="width:100%;height:160px">Click to start</button>');const b=$('#b');
+b.onclick=()=>{if(st==0){st=1;b.textContent='Wait for green…';b.style.background='#c33';T=to(()=>{st=2;t0=Date.now();b.textContent='CLICK!';b.style.background='#2a2'},1000+rnd(3000))}
+else if(st==1){clearTimeout(T);st=0;b.textContent='Too early! Click to retry';b.style.background=''}
+else{st=0;b.textContent=(Date.now()-t0)+' ms. Click to retry';b.style.background=''}}}
+
+function simon(){const C=['#e33','#3b3','#36f','#fc0'];let q=[],p=0,lock=1;ui('<p id=s>Press Start</p><div class=g style=--c:2>'+C.map(c=>`<button style="background:${c};height:90px;aspect-ratio:auto"></button>`).join('')+'</div><button id=go>Start</button>');
+const bs=box.querySelectorAll('.g button'),fl=i=>{bs[i].style.opacity=.3;to(()=>bs[i].style.opacity=1,300)};
+const play=()=>{lock=1;p=0;say('Watch…');q.push(rnd(4));q.forEach((x,k)=>to(()=>fl(x),k*600+400));to(()=>{lock=0;say('Your turn')},q.length*600+400)};
+$('#go').onclick=()=>{q=[];play()};
+bs.forEach((b,i)=>b.onclick=()=>{if(lock)return;fl(i);if(i!=q[p]){lock=1;say('Wrong! Score '+(q.length-1));return}if(++p==q.length){lock=1;say('Nice!');to(play,700)}})}
+
+function dice(){let a=0,b=0;ui('<p id=s>Roll to beat the computer</p><button class=big id=r>🎲 Roll</button><p id=sc>You 0 · CPU 0</p>');
+$('#r').onclick=()=>{const x=2+rnd(6)+rnd(6),y=2+rnd(6)+rnd(6);if(x>y)a++;else if(y>x)b++;say(`You rolled ${x}, CPU rolled ${y}`);$('#sc').textContent=`You ${a} · CPU ${b}`}}
+
+function coin(){let s=0,best=0;ui('<p id=s>Call it!</p><div class=row><button class=big data-c=0>Heads</button><button class=big data-c=1>Tails</button></div><p id=sc>Streak 0 · Best 0</p>');
+box.querySelectorAll('.big').forEach(b=>b.onclick=()=>{const r=rnd(2);if(r==+b.dataset.c){s++;best=Math.max(best,s)}else s=0;say((r?'Tails':'Heads')+(s?' ✅':' ❌'));$('#sc').textContent=`Streak ${s} · Best ${best}`})}
+
+function color(){const N=['Red','Green','Blue','Yellow'],H=['#e33','#2b2','#36f','#fc0'];let sc=0,k;ui('<p id=s>Pick the color of the ink, not the word</p><h2 id=w2></h2><div class=g style=--c:2>'+N.map((n,i)=>`<button data-i=${i} style="aspect-ratio:auto;padding:14px">${n}</button>`).join('')+'</div><p id=sc>Score 0</p>');
+const nx=()=>{k=rnd(4);const w=$('#w2');w.textContent=N[rnd(4)];w.style.color=H[k]};nx();
+box.querySelectorAll('.g button').forEach(b=>b.onclick=()=>{b.dataset.i==k?sc++:sc=0;$('#sc').textContent='Score '+sc;nx()})}
+
+function math(){let sc=0,a,b,o;ui('<p id=s style="font-size:1.6rem"></p><input id=i type=number><button id=b>Answer</button><p id=sc>Score 0</p>');
+const nx=()=>{a=1+rnd(12);b=1+rnd(12);o=['+','-','×'][rnd(3)];say(`${a} ${o} ${b} = ?`);$('#i').value=''};nx();
+$('#b').onclick=()=>{if($('#i').value=='')return;const r=o=='+'?a+b:o=='-'?a-b:a*b;$('#i').value==r?sc++:sc=0;$('#sc').textContent='Score '+sc;nx()}}
+
+function hang(){const W=['javascript','rocket','pizza','galaxy','keyboard','dragon','puzzle','jungle','castle','planet'],w=W[rnd(W.length)];let g=[],m=6;ui('<p id=s></p><div class=row id=k></div>');
+const up=()=>{const sh=[...w].map(c=>g.includes(c)?c:'_').join(' ');$('#s').innerHTML=`<b style="letter-spacing:4px;font-size:1.6em">${sh}</b><br>Lives: ${'❤️'.repeat(m)}${!m?' It was '+w:!sh.includes('_')?' You win! 🎉':''}`};
+$('#k').innerHTML=[...'abcdefghijklmnopqrstuvwxyz'].map(c=>`<button class=sm>${c}</button>`).join('');
+$('#k').querySelectorAll('button').forEach(b=>b.onclick=()=>{if(!m||b.disabled||![...w].some(c=>!g.includes(c)))return;b.disabled=1;const c=b.textContent;g.push(c);if(!w.includes(c))m--;up()});up()}
+
+function scr(){const W=['planet','castle','banana','guitar','window','rocket','garden','pencil','island','silver'];let w,sc=0;ui('<p id=s style="font-size:1.8rem;letter-spacing:4px"></p><input id=i><button id=b>Check</button><p id=sc>Score 0</p>');
+const nx=()=>{w=W[rnd(W.length)];let t;do t=[...w].sort(()=>Math.random()-.5).join('');while(t==w);say(t.toUpperCase());$('#i').value=''};nx();
+$('#b').onclick=()=>{if($('#i').value.toLowerCase().trim()==w){sc++;$('#sc').textContent='Correct! Score '+sc;nx()}else $('#sc').textContent='Not yet. Try again. Score '+sc}}
+
+function flap(){const x=cv(300,400);let y=200,v=0,P=[],f=0,sc=0,dead=0;say('Tap, click or press Space to flap');
+const jump=()=>{if(dead){dead=0;y=200;v=0;P=[];sc=0;f=0}v=-6};on(document,'keydown',e=>{if(e.key==' '){e.preventDefault();jump()}});on(x.canvas,'pointerdown',jump);
+iv(()=>{if(dead)return;v+=.4;y+=v;if(++f%90==0)P.push({x:300,g:100+rnd(200)});P.forEach(p=>p.x-=2);if(P[0]&&P[0].x<-40){P.shift();sc++}
+if(y<0||y>380||P.some(p=>p.x<50&&p.x>-10&&(y<p.g-50||y+20>p.g+50))){dead=1;say('Game over! Score '+sc+'. Tap to retry')}else say('Score '+sc);
+x.fillStyle='#8ef';x.fillRect(0,0,300,400);x.fillStyle='#2a2';P.forEach(p=>{x.fillRect(p.x,0,40,p.g-50);x.fillRect(p.x,p.g+50,40,400)});x.fillStyle='#fd0';x.fillRect(30,y,20,20)},16)}
+
+function pong(){const x=cv(300,200);let py=80,ay=80,bx=150,by=100,vx=3,vy=2,a=0,b=0;say('You 0 · CPU 0. Move the mouse or finger');
+on(x.canvas,'pointermove',e=>py=pos(e,x.canvas)[1]-20);on(document,'keydown',e=>{if(e.key=='ArrowUp')py-=15;if(e.key=='ArrowDown')py+=15});
+const rs=d=>{bx=150;by=100;vx=3*d;vy=2;say(`You ${a} · CPU ${b}`)};
+iv(()=>{bx+=vx;by+=vy;if(by<0||by>195)vy=-vy;ay+=Math.sign(by-ay-20)*2.4;
+if(bx<14&&bx>0&&by>py&&by<py+40)vx=Math.min(Math.abs(vx)*1.05,7);if(bx>286&&by>ay&&by<ay+40)vx=-Math.abs(vx);
+if(bx<-5){b++;rs(1)}if(bx>305){a++;rs(-1)}
+x.fillStyle='#123';x.fillRect(0,0,300,200);x.fillStyle='#fff';x.fillRect(4,py,8,40);x.fillRect(288,ay,8,40);x.fillRect(bx-4,by-4,8,8)},16)}
+
+function catcher(){const x=cv(300,350);let px=130,I=[],sc=0,l=3,f=0;const lim=()=>px=Math.max(0,Math.min(260,px));
+keys(k=>{if(k=='ArrowLeft')px-=30;if(k=='ArrowRight')px+=30;lim()});on(x.canvas,'pointermove',e=>{px=pos(e,x.canvas)[0]-20;lim()});
+iv(()=>{if(l<=0)return;if(++f%30==0)I.push({x:rnd(270),y:0,b:Math.random()<.3});I.forEach(i=>i.y+=3+sc/15);
+I=I.filter(i=>{if(i.y>315&&i.y<350&&i.x>px-25&&i.x<px+40){i.b?l--:sc++;return 0}return i.y<350});
+x.fillStyle='#123';x.fillRect(0,0,300,350);x.font='24px serif';I.forEach(i=>x.fillText(i.b?'💣':'⭐',i.x,i.y));x.fillStyle='#4af';x.fillRect(px,335,40,10);
+say(l>0?`Stars ${sc} · Lives ${'❤️'.repeat(l)}`:`Game over! Stars ${sc}`)},33)}
+
+function lights(){let b=Array(25).fill(0);ui('<p id=s>Turn all the lights off</p>'+grid(25,5));const bs=[...box.querySelectorAll('.g button')];
+const tg=i=>[i,i%5?i-1:-1,i%5<4?i+1:-1,i-5,i+5].forEach(j=>{if(j>=0&&j<25)b[j]^=1});
+for(let k=0;k<12;k++)tg(rnd(25));if(!b.includes(1))tg(12);
+const dr=()=>{bs.forEach((x,i)=>x.style.background=b[i]?'#fc0':'#334');if(!b.includes(1))say('Solved! 🎉')};
+bs.forEach((x,i)=>x.onclick=()=>{tg(i);dr()});dr()}
+
+function mines(){let m=new Set(),o=Array(64).fill(0),dead=0;while(m.size<10)m.add(rnd(64));ui('<p id=s>Find the safe cells (10 mines)</p>'+grid(64,8,'sm'));const bs=[...box.querySelectorAll('.g button')];
+const nb=i=>{const r=[];for(let a=-1;a<2;a++)for(let c=-1;c<2;c++){const y=(i/8|0)+a,z=i%8+c;if(y>=0&&y<8&&z>=0&&z<8&&(a||c))r.push(y*8+z)}return r};
+const op=i=>{if(o[i])return;o[i]=1;const n=nb(i).filter(j=>m.has(j)).length;bs[i].textContent=n||'';bs[i].style.background='var(--bg)';if(!n)nb(i).forEach(op)};
+bs.forEach((b,i)=>b.onclick=()=>{if(dead)return;if(m.has(i)){dead=1;m.forEach(j=>bs[j].textContent='💣');say('Boom! 💥')}else{op(i);if(o.filter(x=>x).length==54)say('You win! 🎉')}})}
+
+const games=[
+['Tic Tac Toe','⭕','Strategy',ttt],['Memory Match','🧠','Memory',mem],['Snake','🐍','Arcade',snake],['Whack-a-Mole','🐹','Reflex',whack],
+['Rock Paper Scissors','✂️','Classic',rps],['Number Guess','🔢','Logic',guess],['Click Speed','👆','Reflex',clk],['Reaction Time','⚡','Reflex',react],
+['Simon Says','🎨','Memory',simon],['Dice Duel','🎲','Luck',dice],['Coin Streak','🪙','Luck',coin],['Color Clash','🌈','Brain',color],
+['Quick Math','➕','Brain',math],['Hangman','🔤','Words',hang],['Word Scramble','🔀','Words',scr],['Flappy Square','🟨','Arcade',flap],
+['Mini Pong','🏓','Arcade',pong],['Star Catcher','⭐','Arcade',catcher],['Lights Out','💡','Puzzle',lights],['Minesweeper','💣','Puzzle',mines]];
+
+const list=$('#list');
+function render(q=''){list.innerHTML='';games.forEach((g,i)=>{if(!(g[0]+g[2]).toLowerCase().includes(q))return;const b=document.createElement('button');b.className='card';b.style.setProperty('--h',i*18);b.innerHTML=`<i>${g[1]}</i><b>${g[0]}</b><span>${g[2]}</span>`;b.onclick=()=>open(i);list.append(b)});if(!list.children.length)list.textContent='No games match your search.'}
+function stop(){cl.forEach(f=>f());cl=[];box.innerHTML=''}
+function open(i){stop();cur=i;$('#t').textContent=games[i][1]+' '+games[i][0];$('#m').classList.add('on');games[i][3]()}
+function close(){stop();$('#m').classList.remove('on')}
+$('#x').onclick=close;$('#re').onclick=()=>open(cur);
+$('#m').onclick=e=>{if(e.target.id=='m')close()};
+document.addEventListener('keydown',e=>{if(e.key=='Escape')close()});
+$('#q').oninput=e=>render(e.target.value.toLowerCase().trim());
+render();
+</script>
+</body>
+</html>
